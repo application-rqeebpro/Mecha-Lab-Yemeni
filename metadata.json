@@ -1,0 +1,8 @@
+{
+  "name": "المختبر الافتراضي لهندسة الميكاترونكس",
+  "description": "منصة الهندسة والميكاترونكس والمحاكاة الافتراضية (دوائر كهربائية، تحكم PID، روبوتات، PLC).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+*, ::before, ::after {
+  box-sizing: border-box;
+}
+
+@layer utilities {
+  .bg-grid-pattern {
+    background-size: 24px 24px;
+    background-image: 
+      linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  }
+  .bg-breadboard-pattern {
+    background-size: 20px 20px;
+    background-image: radial-gradient(circle, #334155 1.5px, transparent 1.5px);
+  }
+  .bg-oscilloscope-grid {
+    background-size: 32px 32px;
+    background-image: 
+      linear-gradient(to right, rgba(16, 185, 129, 0.15) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(16, 185, 129, 0.15) 1px, transparent 1px);
+  }
+  /* Safe Area Utilities for Notches and Home Indicators */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Hide scrollbar for clean horizontal tabs on touch screens */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* Mobile touch responsive helper */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+  min-width: 320px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Custom scrollbars for lab benches */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Directional & Anti-Overflow Rules to Prevent Flipped Text and Boundary Breaches */
+.force-ltr {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate !important;
+}
+
+.force-rtl {
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: isolate !important;
+}
+
+.prevent-overflow {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+/* CAD Sidebar Vertical Tabs: Upright, non-reversed text */
+.cad-vertical-tab-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  direction: ltr;
+  transform: none !important;
+  user-select: none;
+}

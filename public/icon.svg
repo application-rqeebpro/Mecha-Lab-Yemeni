@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+  </defs>
+  <!-- Background rounded squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect x="8" y="8" width="496" height="496" rx="104" fill="none" stroke="#6366f1" stroke-width="3" stroke-opacity="0.3" />
+  <!-- Outer Mechatronics Gear Contour -->
+  <g transform="translate(256, 256)" fill="none" stroke="#8b5cf6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.6">
+    <circle r="170" stroke-dasharray="16 28" />
+  </g>
+  <!-- Circuit Trace Lines -->
+  <g stroke="#38bdf8" stroke-width="4" stroke-linecap="round" opacity="0.7">
+    <path d="M 80 180 L 160 180 L 200 220" />
+    <circle cx="80" cy="180" r="6" fill="#38bdf8" />
+    
+    <path d="M 80 332 L 150 332 L 190 292" />
+    <circle cx="80" cy="332" r="6" fill="#38bdf8" />
+    
+    <path d="M 432 180 L 352 180 L 312 220" />
+    <circle cx="432" cy="180" r="6" fill="#38bdf8" />
+    
+    <path d="M 432 332 L 362 332 L 322 292" />
+    <circle cx="432" cy="332" r="6" fill="#38bdf8" />
+    
+    <path d="M 256 70 L 256 150" />
+    <circle cx="256" cy="70" r="6" fill="#38bdf8" />
+    
+    <path d="M 256 442 L 256 362" />
+    <circle cx="256" cy="442" r="6" fill="#38bdf8" />
+  </g>
+  <!-- Central Microchip Package -->
+  <g transform="translate(156, 156)">
+    <!-- Microcontroller Chip Body -->
+    <rect width="200" height="200" rx="36" fill="#1e1b4b" stroke="url(#primaryGrad)" stroke-width="6" />
+    <!-- Chip Pins Top -->
+    <g fill="#94a3b8">
+      <rect x="35" y="-14" width="16" height="16" rx="4" />
+      <rect x="75" y="-14" width="16" height="16" rx="4" />
+      <rect x="115" y="-14" width="16" height="16" rx="4" />
+      <rect x="155" y="-14" width="16" height="16" rx="4" />
+    </g>
+    <!-- Chip Pins Bottom -->
+    <g fill="#94a3b8">
+      <rect x="35" y="198" width="16" height="16" rx="4" />
+      <rect x="75" y="198" width="16" height="16" rx="4" />
+      <rect x="115" y="198" width="16" height="16" rx="4" />
+      <rect x="155" y="198" width="16" height="16" rx="4" />
+    </g>
+    <!-- Chip Pins Left -->
+    <g fill="#94a3b8">
+      <rect x="-14" y="35" width="16" height="16" rx="4" />
+      <rect x="-14" y="75" width="16" height="16" rx="4" />
+      <rect x="-14" y="115" width="16" height="16" rx="4" />
+      <rect x="-14" y="155" width="16" height="16" rx="4" />
+    </g>
+    <!-- Chip Pins Right -->
+    <g fill="#94a3b8">
+      <rect x="198" y="35" width="16" height="16" rx="4" />
+      <rect x="198" y="75" width="16" height="16" rx="4" />
+      <rect x="198" y="115" width="16" height="16" rx="4" />
+      <rect x="198" y="155" width="16" height="16" rx="4" />
+    </g>
+    <!-- Core Mechatronics Symbol (Lightning + Robotic Pulse) -->
+    <circle cx="100" cy="100" r="54" fill="#0f172a" stroke="#8b5cf6" stroke-width="4" />
+    
+    <!-- Pulse & Bolt -->
+    <path d="M 100 66 L 82 102 L 98 102 L 96 134 L 118 96 L 102 96 Z" fill="#f59e0b" />
+  </g>
+</svg>
