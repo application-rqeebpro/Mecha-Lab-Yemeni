@@ -217,8 +217,8 @@ export const EnterCodeModal: React.FC<EnterCodeModalProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
                 <span>كود الدخول للمعمل <span className="text-rose-400">*</span></span>
-                <span className="text-[10px] text-emerald-400 font-normal">
-                  أدخل الكود المستلم من 785502919
+                <span className="text-[10px] text-slate-400 font-normal">
+                  الكود المعتمد
                 </span>
               </label>
               <div className="relative">
@@ -229,7 +229,7 @@ export const EnterCodeModal: React.FC<EnterCodeModalProps> = ({
                   autoFocus
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  placeholder="أدخل الكود هنا (مثال: M24U4C أو 785502919)"
+                  placeholder="أدخل كود الدخول للمعمل"
                   className="w-full bg-slate-950 border-2 border-purple-500/60 focus:border-emerald-400 rounded-xl pr-10 pl-4 py-3 text-base text-white text-center font-mono font-bold tracking-widest placeholder-slate-600 focus:outline-none transition shadow-inner uppercase"
                   dir="ltr"
                 />

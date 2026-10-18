@@ -43,6 +43,7 @@ import {
 import { StudentUser, Experiment, AcademicYear, LabCategory, AccessRequest } from '../types/mechatronics';
 import { authStorage, DEFAULT_OWNER_PASSWORD, MASTER_OWNER_PASSWORDS, NeonDbStatus } from '../services/authStorage';
 import { YEMENI_UNIVERSITIES } from '../data/curriculumData';
+import { OFFICIAL_ACTIVATION_CODES } from '../data/activationCodes';
 
 interface OwnerAdminModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   onClose,
   onLessonAdded,
 }) => {
-  const [activeTab, setActiveTab] = useState<'requests' | 'users' | 'create_account' | 'activate' | 'neon_db' | 'add_lesson' | 'security'>('requests');
+  const [activeTab, setActiveTab] = useState<'requests' | 'users' | 'codes' | 'create_account' | 'activate' | 'neon_db' | 'add_lesson' | 'security'>('requests');
   const [usersList, setUsersList] = useState<StudentUser[]>([]);
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [neonStatus, setNeonStatus] = useState<NeonDbStatus | null>(null);
@@ -111,6 +112,15 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [passwordFeedback, setPasswordFeedback] = useState<{ success: boolean; msg: string } | null>(null);
   const [copiedPass, setCopiedPass] = useState<boolean>(false);
+
+  // Activation Codes Management State (200 Codes)
+  const [codeSearchQuery, setCodeSearchQuery] = useState<string>('');
+  const [codeFilterStatus, setCodeFilterStatus] = useState<'all' | 'available' | 'used'>('all');
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copiedAllCodes, setCopiedAllCodes] = useState<boolean>(false);
+  const [selectedCodeForSend, setSelectedCodeForSend] = useState<string | null>(null);
+  const [customSendPhone, setCustomSendPhone] = useState<string>('');
+  const [customSendName, setCustomSendName] = useState<string>('');
 
   // New Lesson form state
   const [newTitle, setNewTitle] = useState<string>('');
@@ -464,6 +474,49 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   const activatedUsers = usersList.filter(u => u.isActivated).length;
   const pendingUsers = usersList.filter(u => !u.isActivated).length;
 
+  // Activation Codes Analytics & Lookup
+  const usedCodesMap = React.useMemo(() => {
+    const map = new Map<string, { studentName: string; phone: string; date?: string }>();
+    usersList.forEach(u => {
+      if (u.accessCode) {
+        map.set(u.accessCode.trim().toUpperCase(), {
+          studentName: u.name,
+          phone: u.phone,
+          date: u.registeredAt
+        });
+      }
+    });
+    accessRequests.forEach(r => {
+      if (r.accessCode) {
+        map.set(r.accessCode.trim().toUpperCase(), {
+          studentName: r.name,
+          phone: r.phone,
+          date: r.createdAt
+        });
+      }
+    });
+    return map;
+  }, [usersList, accessRequests]);
+
+  const filteredCodes = React.useMemo(() => {
+    return OFFICIAL_ACTIVATION_CODES.filter(code => {
+      const upper = code.toUpperCase();
+      const isUsed = usedCodesMap.has(upper);
+      
+      if (codeFilterStatus === 'available' && isUsed) return false;
+      if (codeFilterStatus === 'used' && !isUsed) return false;
+      
+      if (codeSearchQuery.trim()) {
+        const query = codeSearchQuery.trim().toUpperCase();
+        const studentInfo = usedCodesMap.get(upper);
+        const matchesCode = upper.includes(query);
+        const matchesStudent = studentInfo?.studentName?.toUpperCase().includes(query) || studentInfo?.phone?.includes(query);
+        return matchesCode || Boolean(matchesStudent);
+      }
+      return true;
+    });
+  }, [codeFilterStatus, codeSearchQuery, usedCodesMap]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
       <div className="bg-slate-900 border-2 border-amber-500/40 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden font-sans text-slate-100">
@@ -568,6 +621,17 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
           >
             <Users className="w-4 h-4" />
             <span>إدارة حسابات الطلاب والمشتركين ({totalUsers})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('codes')}
+            className={`py-3 px-3.5 font-bold border-b-2 transition flex items-center gap-1.5 ${
+              activeTab === 'codes'
+                ? 'border-purple-500 text-purple-400 bg-slate-900/40'
+                : 'border-transparent text-purple-400/90 hover:text-purple-300'
+            }`}
+          >
+            <KeyRound className="w-4 h-4 text-purple-400" />
+            <span>أكواد الدخول للمعمل ({OFFICIAL_ACTIVATION_CODES.length})</span>
           </button>
           <button
             onClick={() => {
@@ -769,7 +833,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                           r.phone.includes(requestSearch) ||
                           r.university.toLowerCase().includes(requestSearch.toLowerCase())
                         )
-                        .map((req) => (
+                        .map((req, idx) => (
                           <tr key={req.id} className="hover:bg-slate-900/50 transition">
                             <td className="p-3 font-semibold text-white">
                               <div className="flex items-center gap-2">
@@ -855,7 +919,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                                 )}
                                 <a
                                   href={`https://wa.me/967${req.phone.replace(/\D/g, '').replace(/^0/, '')}?text=${encodeURIComponent(
-                                    `مرحباً بك يا مهندس ${req.name} في المختبر الافتراضي لهندسة الميكاترونكس!\n\nكود الدخول الخاص بك للمعمل هو: 785502919\n\nأدخل الكود في شاشة "أدخل الكود للدخول للمعمل" لتفعيل وصولك فوراً.`
+                                    `مرحباً بك يا مهندس ${req.name} في المختبر الافتراضي لهندسة الميكاترونكس!\n\nكود الدخول المعتمد الخاص بك للمعمل هو:\n${req.accessCode || OFFICIAL_ACTIVATION_CODES[idx % OFFICIAL_ACTIVATION_CODES.length]}\n\nأدخل الكود في شاشة "أدخل الكود للدخول للمعمل" لتفعيل وصولك فوراً.`
                                   )}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -888,6 +952,351 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* TAB: OFFICIAL ACTIVATION CODES (200 CODES) */}
+          {activeTab === 'codes' && (
+            <div className="space-y-4">
+              {/* Header Stats & Quick Actions */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-900/90 border border-purple-500/30 p-3.5 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] text-slate-400 block font-semibold">إجمالي الأكواد الرسمية</span>
+                    <span className="text-xl font-black text-purple-300 font-mono">
+                      {OFFICIAL_ACTIVATION_CODES.length} كود
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/90 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] text-slate-400 block font-semibold">الأكواد المتاحة (غير مستخدمة)</span>
+                    <span className="text-xl font-black text-emerald-400 font-mono">
+                      {OFFICIAL_ACTIVATION_CODES.filter(c => !usedCodesMap.has(c.toUpperCase())).length} كود
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/90 border border-amber-500/30 p-3.5 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] text-slate-400 block font-semibold">الأكواد المستخدمة والمفعلة</span>
+                    <span className="text-xl font-black text-amber-400 font-mono">
+                      {OFFICIAL_ACTIVATION_CODES.filter(c => usedCodesMap.has(c.toUpperCase())).length} كود
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center">
+                    <Users className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Toolbar: Search, Filters & Bulk Actions */}
+              <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                {/* Search Bar */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={codeSearchQuery}
+                    onChange={(e) => setCodeSearchQuery(e.target.value)}
+                    placeholder="ابحث عن كود معين أو اسم طالب استخدمه..."
+                    className="w-full bg-slate-900 border border-slate-700 focus:border-purple-500 rounded-xl pr-10 pl-14 py-2 text-xs text-white placeholder-slate-500 focus:outline-none transition uppercase"
+                  />
+                  {codeSearchQuery && (
+                    <button
+                      onClick={() => setCodeSearchQuery('')}
+                      className="absolute left-3 top-2.5 text-slate-400 hover:text-white text-xs cursor-pointer"
+                    >
+                      مسح
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Status Chips */}
+                <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-[11px]">
+                  <button
+                    onClick={() => setCodeFilterStatus('all')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                      codeFilterStatus === 'all'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    الكل ({OFFICIAL_ACTIVATION_CODES.length})
+                  </button>
+                  <button
+                    onClick={() => setCodeFilterStatus('available')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
+                      codeFilterStatus === 'available'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'text-emerald-400 hover:text-emerald-300'
+                    }`}
+                  >
+                    <span>المتاحة</span>
+                    <span>({OFFICIAL_ACTIVATION_CODES.filter(c => !usedCodesMap.has(c.toUpperCase())).length})</span>
+                  </button>
+                  <button
+                    onClick={() => setCodeFilterStatus('used')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer ${
+                      codeFilterStatus === 'used'
+                        ? 'bg-amber-600 text-white shadow'
+                        : 'text-amber-400 hover:text-amber-300'
+                    }`}
+                  >
+                    <span>المستخدمة</span>
+                    <span>({OFFICIAL_ACTIVATION_CODES.filter(c => usedCodesMap.has(c.toUpperCase())).length})</span>
+                  </button>
+                </div>
+
+                {/* Bulk Export & Copy Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(OFFICIAL_ACTIVATION_CODES.join('\n'));
+                      setCopiedAllCodes(true);
+                      setTimeout(() => setCopiedAllCodes(false), 2500);
+                    }}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer"
+                    title="نسخ جميع الأكواد إلى الحافظة"
+                  >
+                    {copiedAllCodes ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">تم نسخ الـ 200 كود!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-purple-400" />
+                        <span>نسخ جميع الأكواد</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const element = document.createElement("a");
+                      const file = new Blob([OFFICIAL_ACTIVATION_CODES.join('\n')], { type: 'text/plain;charset=utf-8' });
+                      element.href = URL.createObjectURL(file);
+                      element.download = "mechatronics_activation_codes_200.txt";
+                      document.body.appendChild(element);
+                      element.click();
+                      document.body.removeChild(element);
+                    }}
+                    className="px-3 py-2 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    title="تنزيل قائمة الأكواد في ملف نصي"
+                  >
+                    <FileCheck className="w-3.5 h-3.5 text-purple-400" />
+                    <span>تنزيل TXT</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Codes Grid */}
+              <div className="max-h-[480px] overflow-y-auto p-1 pr-2 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+                  {filteredCodes.map((code) => {
+                    const upper = code.toUpperCase();
+                    const isUsed = usedCodesMap.has(upper);
+                    const studentInfo = usedCodesMap.get(upper);
+
+                    return (
+                      <div
+                        key={code}
+                        className={`p-3 rounded-2xl border transition-all duration-200 flex flex-col justify-between gap-2 shadow-sm ${
+                          isUsed
+                            ? 'bg-slate-900/40 border-amber-500/30 hover:border-amber-500/50'
+                            : 'bg-slate-900/90 border-slate-800 hover:border-purple-500/50 hover:shadow-md hover:shadow-purple-950/30'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-mono font-black text-sm tracking-widest text-white">
+                            {code}
+                          </span>
+                          {isUsed ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              مُستخدم
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                              متاح
+                            </span>
+                          )}
+                        </div>
+
+                        {isUsed && studentInfo ? (
+                          <div className="text-[10px] text-slate-400 bg-slate-950/70 p-1.5 rounded-lg border border-slate-800 truncate">
+                            <span className="text-amber-300 font-semibold block truncate">
+                              {studentInfo.studentName}
+                            </span>
+                            <span className="font-mono text-slate-400 dir-ltr text-[9px] block">
+                              {studentInfo.phone}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-500 py-1">
+                            جاهز للإرسال لأي طالب
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1 pt-1 border-t border-slate-800/80">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(code);
+                              setCopiedCode(code);
+                              setTimeout(() => setCopiedCode(null), 2000);
+                            }}
+                            className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                            title="نسخ الكود"
+                          >
+                            {copiedCode === code ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span className="text-emerald-400 text-[10px]">تم!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3 text-slate-400" />
+                                <span>نسخ</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCodeForSend(code);
+                              const pending = accessRequests.find(r => r.status === 'pending');
+                              if (pending) {
+                                setCustomSendPhone(pending.phone);
+                                setCustomSendName(pending.name);
+                              } else {
+                                setCustomSendPhone('');
+                                setCustomSendName('');
+                              }
+                            }}
+                            className="py-1 px-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                            title="إرسال عبر واتساب لطالب"
+                          >
+                            <Send className="w-3 h-3 text-emerald-400" />
+                            <span>إرسال</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {filteredCodes.length === 0 && (
+                  <div className="py-12 text-center text-slate-500 text-xs">
+                    لا توجد أكواد مطابقة لبحثك «{codeSearchQuery}»
+                  </div>
+                )}
+              </div>
+
+              {/* Direct Send Modal / Drawer */}
+              {selectedCodeForSend && (
+                <div className="p-4 bg-gradient-to-r from-purple-950/70 via-slate-900 to-emerald-950/70 border border-purple-500/50 rounded-2xl shadow-xl space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="w-5 h-5 text-emerald-400" />
+                      <h4 className="text-sm font-black text-white">
+                        إرسال الكود <span className="font-mono text-emerald-400 font-bold px-2 py-0.5 bg-emerald-950 rounded border border-emerald-500/40">{selectedCodeForSend}</span> إلى طالب عبر واتساب
+                      </h4>
+                    </div>
+                    <button
+                      onClick={() => setSelectedCodeForSend(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Quick Select from Pending Requests */}
+                  {accessRequests.filter(r => r.status === 'pending').length > 0 && (
+                    <div>
+                      <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                        أو اختر طالباً من قائمة طلبات الاشتراك المنتظرة:
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {accessRequests.filter(r => r.status === 'pending').slice(0, 6).map(r => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => {
+                              setCustomSendPhone(r.phone);
+                              setCustomSendName(r.name);
+                            }}
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-lg text-[11px] flex items-center gap-1 transition cursor-pointer"
+                          >
+                            <span>{r.name}</span>
+                            <span className="font-mono text-slate-500 text-[10px]">({r.phone})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                        اسم الطالب (اختياري)
+                      </label>
+                      <input
+                        type="text"
+                        value={customSendName}
+                        onChange={(e) => setCustomSendName(e.target.value)}
+                        placeholder="اسم الطالب"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                        رقم هاتف الطالب (واتساب) *
+                      </label>
+                      <input
+                        type="tel"
+                        value={customSendPhone}
+                        onChange={(e) => setCustomSendPhone(e.target.value)}
+                        placeholder="مثال: 771234567"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono text-center"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCodeForSend(null)}
+                      className="px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                    <a
+                      href={`https://wa.me/967${customSendPhone.replace(/\D/g, '').replace(/^0/, '')}?text=${encodeURIComponent(
+                        `مرحباً بك يا مهندس ${customSendName || ''} في المختبر الافتراضي لهندسة الميكاترونكس!\n\nكود الدخول المعتمد الخاص بك للمعمل هو:\n${selectedCodeForSend}\n\nأدخل هذا الكود في شاشة "أدخل الكود للدخول للمعمل" وسيتم تفعيل حسابك ودخولك فوراً.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setSelectedCodeForSend(null)}
+                      className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow ${
+                        !customSendPhone.trim() ? 'opacity-50 pointer-events-none' : ''
+                      }`}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>إرسال الكود فوراً عبر واتساب</span>
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1087,7 +1496,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                       required
                       value={createPhone}
                       onChange={(e) => setCreatePhone(e.target.value)}
-                      placeholder="مثال: 771234567 أو 734567890 أو 785502919"
+                      placeholder="مثال: 771234567 أو 734567890"
                       className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-mono text-sm tracking-wider focus:outline-none focus:border-emerald-500"
                     />
                   </div>
@@ -1726,7 +2135,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                     type="button"
                     onClick={handleResetPassword}
                     className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition flex items-center gap-1.5"
-                    title="استعادة الرمز الافتراضي (785502919)"
+                    title="استعادة الرمز الافتراضي"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>استعادة الافتراضي</span>
@@ -1736,22 +2145,32 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
 
               {/* Master Recovery Passwords Info */}
               <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-2 text-slate-300 leading-relaxed">
-                <div className="font-bold text-amber-400 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>مفاتيح الأمان الاحتياطية للطوارئ (Master Recovery Keys):</span>
+                <div className="flex items-center justify-between">
+                  <div className="font-bold text-amber-400 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>مفاتيح الأمان الاحتياطية للطوارئ (Master Recovery Keys):</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="p-1 rounded text-slate-400 hover:text-white transition flex items-center gap-1 text-[11px]"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPassword ? 'إخفاء' : 'إظهار'}</span>
+                  </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  إذا نسيت رمزك المخصص، يمكنك دائماً الدخول كمالك باستخدام أي من الرموز المعتمدة التالية:
+                  مفاتيح الطوارئ المشفرة المعتمدة لحساب المالك (انقر إظهار لعرضها):
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono text-[11px] text-center">
                   <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-amber-300 font-bold">
-                    785502919
+                    {showPassword ? '785502919' : '••••••••'}
                   </div>
                   <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-purple-300">
-                    mechatronics2026
+                    {showPassword ? 'mechatronics2026' : '••••••••••••••••'}
                   </div>
                   <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-indigo-300">
-                    admin785502919
+                    {showPassword ? 'admin785502919' : '••••••••••••••'}
                   </div>
                 </div>
               </div>

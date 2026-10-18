@@ -281,7 +281,7 @@ export const OwnerAuthModal: React.FC<OwnerAuthModalProps> = ({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="rqeebpro@gmail.com أو admin@engaseel.online"
+                    placeholder="أدخل البريد الإلكتروني"
                     className="w-full bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl pr-10 pl-3 py-2.5 text-sm text-white focus:outline-none transition"
                     autoFocus
                   />
@@ -329,7 +329,7 @@ export const OwnerAuthModal: React.FC<OwnerAuthModalProps> = ({
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="785502919"
+                    placeholder="رقم هاتف المالك المسجل"
                     className="w-full bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl pr-10 pl-3 py-2.5 text-sm text-white focus:outline-none transition font-mono"
                     dir="ltr"
                     autoFocus

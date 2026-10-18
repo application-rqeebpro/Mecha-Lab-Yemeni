@@ -404,6 +404,7 @@ export const authStorage = {
           academicYear: 1,
           isAcademySubscriber: true,
           isActivated: true,
+          accessCode: upperCode,
           registeredAt: new Date().toISOString().split('T')[0],
           role: 'student'
         };
@@ -411,8 +412,18 @@ export const authStorage = {
       } else {
         user.isActivated = true;
         user.isAcademySubscriber = true;
+        user.accessCode = upperCode;
       }
       this.saveUsers(users);
+
+      // Also update request access code if exists
+      const requests = this.getAccessRequests();
+      const reqIdx = requests.findIndex((r: AccessRequest) => r.phone === cleanPhone || normalizePhone(r.phone) === cleanPhone);
+      if (reqIdx !== -1) {
+        requests[reqIdx].status = 'approved';
+        requests[reqIdx].accessCode = upperCode;
+        this.saveAccessRequests(requests);
+      }
       this.setCurrentUser(user);
 
       return {

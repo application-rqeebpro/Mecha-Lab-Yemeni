@@ -408,18 +408,20 @@ export default async function handler(req: any, res: any) {
       if (memUser) {
         memUser.is_activated = true;
         memUser.is_academy_subscriber = true;
+        memUser.access_code = upperCode;
         memUser.updated_at = new Date().toISOString();
       }
 
       if (memReq) {
         memReq.status = 'approved';
+        memReq.access_code = upperCode;
         memReq.updated_at = new Date().toISOString();
       }
 
       if (pool && cleanPhone) {
         try {
-          await pool.query(`UPDATE users SET is_activated = true, is_academy_subscriber = true, updated_at = NOW() WHERE phone = $1 OR phone = $2;`, [cleanPhone, rawPhone]);
-          await pool.query(`UPDATE access_requests SET status = 'approved', updated_at = NOW() WHERE phone = $1 OR phone = $2;`, [cleanPhone, rawPhone]);
+          await pool.query(`UPDATE users SET is_activated = true, is_academy_subscriber = true, access_code = $3, updated_at = NOW() WHERE phone = $1 OR phone = $2;`, [cleanPhone, rawPhone, upperCode]);
+          await pool.query(`UPDATE access_requests SET status = 'approved', access_code = $3, updated_at = NOW() WHERE phone = $1 OR phone = $2;`, [cleanPhone, rawPhone, upperCode]);
         } catch {}
       }
 
