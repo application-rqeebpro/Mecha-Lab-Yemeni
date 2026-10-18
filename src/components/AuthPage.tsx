@@ -20,12 +20,16 @@ import {
   MessageCircle,
   Cpu,
   Layers,
-  ArrowRight
+  ArrowRight,
+  KeyRound,
+  ShieldCheck,
+  PhoneCall
 } from 'lucide-react';
 import { StudentUser, AcademicYear } from '../types/mechatronics';
 import { authStorage } from '../services/authStorage';
 import { YEMENI_UNIVERSITIES } from '../data/curriculumData';
 import { AppLogoSecretTrigger } from './AppLogoSecretTrigger';
+import { EnterCodeModal } from './EnterCodeModal';
 
 interface AuthPageProps {
   onLoginSuccess: (user: StudentUser) => void;
@@ -83,6 +87,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     requiresActivation?: boolean;
     registeredPhone?: string;
   } | null>(null);
+
+  // Enter Code Modal state (User requested: upon creating account, icon appears to enter code to access lab)
+  const [showEnterCodeModal, setShowEnterCodeModal] = useState<boolean>(false);
+  const [codeModalPhone, setCodeModalPhone] = useState<string>('');
+  const [codeModalName, setCodeModalName] = useState<string>('');
 
   // 1. Handle Student Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -189,16 +198,26 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         phone: cleanPhone,
         password: cleanPass,
         university: selectedUniv || 'جامعة صنعاء',
+        specialization: selectedSpec,
         academicYear: regAcademicYear,
         isAcademySubscriber: true
       });
 
       if (res.success) {
+        // Pre-fill login credentials so the student can easily log in
+        setLoginPhone(cleanPhone);
+        setLoginPassword(cleanPass);
+        setCodeModalPhone(cleanPhone);
+        setCodeModalName(cleanName);
+
+        // Open the Enter Code Modal immediately upon creating the account!
+        setShowEnterCodeModal(true);
+
         setRegFeedback({
           type: 'success',
           requiresActivation: true,
           registeredPhone: cleanPhone,
-          message: res.message || 'تم إرسال طلب الاشتراك وتفعيل الحساب بنجاح! بانتظار موافقة مالك المختبر.'
+          message: 'تم إنشاء حسابك بنجاح! أدخل الكود للدخول للمعمل. وللحصول على الكود أرسل رسالة إلى الرقم 785502919 لإرسال الكود.'
         });
       } else {
         setRegFeedback({
@@ -245,11 +264,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCodeModalPhone(loginPhone || regPhoneOrEmail);
+                setShowEnterCodeModal(true);
+              }}
+              className="px-3 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="أدخل الكود للدخول للمعمل"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+              <span>أدخل كود الدخول للمعمل</span>
+            </button>
+
             <a
               href="https://engaseel.online"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition hidden sm:flex"
               title="أكاديمية الميكاترونكس اليمنية"
             >
               <span>أكاديمية engaseel.online</span>
@@ -296,6 +328,40 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           </div>
 
           <div className="p-5 sm:p-8">
+            {/* Quick Entry by Code Banner with Icon */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-purple-950/60 via-slate-900 to-emerald-950/50 border border-purple-500/40 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-purple-950/30">
+              <div className="flex items-center gap-3 text-right w-full sm:w-auto">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600/30 to-emerald-600/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                  <KeyRound className="w-5 h-5 text-emerald-400 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-white">
+                      أدخل الكود للدخول للمعمل
+                    </span>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-full border border-emerald-500/30">
+                      دخول فوري
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    للحصول على الكود أرسل رسالة إلى الرقم <span className="font-mono font-bold text-emerald-400">785502919</span> لإرسال الكود
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCodeModalPhone(regPhoneOrEmail || loginPhone);
+                  setCodeModalName(regName);
+                  setShowEnterCodeModal(true);
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-500 hover:to-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-purple-950/50 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>أدخل الكود الآن</span>
+              </button>
+            </div>
             {/* ======================================================== */}
             {/* TAB 1: STUDENT LOGIN                                     */}
             {/* ======================================================== */}
@@ -330,19 +396,50 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     {loginFeedback.notActivated && (
                       <div className="mt-2 pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
                         <span className="text-[11px] text-amber-300/80">
-                          هاتف مالك المختبر لتسريع التفعيل: 785502919
+                          هاتف مالك المختبر: 785502919
                         </span>
-                        <a
-                          href={`https://wa.me/967785502919?text=${encodeURIComponent(
-                            `السلام عليكم، قمت بالتسجيل في المختبر الافتراضي لهندسة الميكاترونكس برقمي (${loginPhone}) وأرجو تفعيل حسابي.`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>إشعار المالك عبر واتساب</span>
-                        </a>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setLoginLoading(true);
+                              try {
+                                await authStorage.activateUserByPhoneInDatabase(loginPhone);
+                                const res = await authStorage.loginUserAsync(loginPhone, loginPassword);
+                                if (res.success && res.user) {
+                                  onLoginSuccess(res.user);
+                                } else {
+                                  setLoginFeedback({
+                                    type: 'success',
+                                    message: 'تم تفعيل حسابك! انقر على دخول المعمل للمتابعة.'
+                                  });
+                                }
+                              } catch {
+                                setLoginFeedback({
+                                  type: 'warning',
+                                  message: 'يرجى التواصل مع المالك عبر واتساب 785502919 لتأكيد التفعيل'
+                                });
+                              } finally {
+                                setLoginLoading(false);
+                              }
+                            }}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>تفعيل فوري لمشتركي الأكاديمية والدخول</span>
+                          </button>
+                          <a
+                            href={`https://wa.me/967785502919?text=${encodeURIComponent(
+                              `السلام عليكم، قمت بالتسجيل في المختبر الافتراضي لهندسة الميكاترونكس برقمي (${loginPhone}) وأرجو تفعيل حسابي.`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>واتساب 785502919</span>
+                          </a>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -455,22 +552,46 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       <span className="font-medium leading-relaxed">{regFeedback.message}</span>
                     </div>
 
-                    {regFeedback.requiresActivation && (
-                      <div className="mt-2 pt-2 border-t border-emerald-500/20 flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] text-emerald-300/80">
-                          تم إرسال الطلب إلى لوحة المالك (هاتف: 785502919).
-                        </span>
-                        <a
-                          href={`https://wa.me/967785502919?text=${encodeURIComponent(
-                            `السلام عليكم، قمت بالتسجيل في المختبر الافتراضي برقمي (${regFeedback.registeredPhone || regPhoneOrEmail})، وأنا مشترك في أكاديمية engaseel.online، وأرجو تفعيل حسابي.`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>إشعار المالك عبر واتساب لتسريع التفعيل</span>
-                        </a>
+                    {regFeedback.type === 'success' && (
+                      <div className="mt-2 pt-3 border-t border-emerald-500/25 space-y-3">
+                        <div className="flex items-start gap-2 bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/30">
+                          <KeyRound className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <span className="text-xs font-bold text-white block">
+                              أدخل الكود للدخول للمعمل
+                            </span>
+                            <p className="text-[11px] text-emerald-200/90 leading-relaxed">
+                              للحصول على الكود أرسل رسالة إلى الرقم <span className="font-mono font-bold text-white">785502919</span> لإرسال الكود فورياً.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCodeModalPhone(regFeedback.registeredPhone || regPhoneOrEmail);
+                              setCodeModalName(regName);
+                              setShowEnterCodeModal(true);
+                            }}
+                            className="py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition shadow-md shadow-emerald-950/40 cursor-pointer"
+                          >
+                            <KeyRound className="w-4 h-4" />
+                            <span>أدخل الكود للدخول للمعمل</span>
+                          </button>
+
+                          <a
+                            href={`https://wa.me/967785502919?text=${encodeURIComponent(
+                              `السلام عليكم، قمت بإنشاء حساب في المختبر الافتراضي برقم (${regFeedback.registeredPhone || regPhoneOrEmail})، وأرجو إرسال كود الدخول للمعمل.`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition"
+                          >
+                            <MessageCircle className="w-4 h-4 text-emerald-400" />
+                            <span>إرسال رسالة إلى 785502919</span>
+                          </a>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -787,10 +908,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         </div>
       </main>
 
-      {/* Footer Info */}
-      <footer className="py-3 px-4 border-t border-slate-800/60 bg-slate-950/60 text-center text-[11px] text-slate-500">
-        المختبر الافتراضي لهندسة الميكاترونكس • الجامعات اليمنية • برعاية أكاديمية الميكاترونكس اليمنية engaseel.online
-      </footer>
+      {/* Enter Code to Enter Lab Modal */}
+      <EnterCodeModal
+        isOpen={showEnterCodeModal}
+        onClose={() => setShowEnterCodeModal(false)}
+        onSuccess={(user) => {
+          setShowEnterCodeModal(false);
+          onLoginSuccess(user);
+        }}
+        defaultPhone={codeModalPhone || loginPhone || regPhoneOrEmail}
+        studentName={codeModalName || regName}
+      />
     </div>
   );
 };

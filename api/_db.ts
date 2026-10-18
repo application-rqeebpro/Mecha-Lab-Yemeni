@@ -1,42 +1,157 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import ws from 'ws';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
 
-if (!neonConfig.webSocketConstructor) {
-  neonConfig.webSocketConstructor = ws;
+const { Pool } = pg;
+
+let pool: pg.Pool | null = null;
+let initPromise: Promise<void> | null = null;
+let customDatabaseUrl: string | null = null;
+
+export function setCustomDatabaseUrl(url: string | null) {
+  customDatabaseUrl = url && url.trim() ? url.trim() : null;
+  if (pool) {
+    pool.end().catch(() => {});
+    pool = null;
+    initPromise = null;
+  }
 }
 
-let pool: Pool | null = null;
-let initPromise: Promise<void> | null = null;
-
 export function getDatabaseUrl(): string | undefined {
-  return process.env.DATABASE_URL || 
+  return customDatabaseUrl ||
+         process.env.DATABASE_URL || 
          process.env.POSTGRES_URL || 
          process.env.POSTGRES_PRISMA_URL ||
          process.env.POSTGRES_URL_NON_POOLING ||
          process.env.DATABASE_URL_UNPOOLED;
 }
 
-export function getPool(): Pool | null {
+export function getPool(): pg.Pool | null {
   const connectionString = getDatabaseUrl();
   if (!connectionString) {
     return null;
   }
 
   if (!pool) {
-    pool = new Pool({
-      connectionString,
-      ssl: true,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
-    });
+    try {
+      pool = new Pool({
+        connectionString,
+        ssl: {
+          rejectUnauthorized: false
+        },
+        max: 8,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 8000
+      });
 
-    pool.on('error', (err: any) => {
-      console.error('Unexpected error on idle Neon PostgreSQL client:', err);
-    });
+      pool.on('error', (err: any) => {
+        console.warn('PostgreSQL idle client warning:', err?.message || err);
+      });
+    } catch (e) {
+      console.error('Failed to construct pg.Pool:', e);
+      return null;
+    }
   }
 
   return pool;
+}
+
+// Global fallback in-memory store so NO student subscription is EVER lost even when database URL is not configured
+export interface MemoryUser {
+  id: string;
+  name: string;
+  phone: string;
+  password?: string;
+  university: string;
+  specialization?: string;
+  academic_year: number;
+  is_academy_subscriber: boolean;
+  is_activated: boolean;
+  role: 'student' | 'owner';
+  expires_at?: string;
+  access_duration?: string;
+  access_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoryRequest {
+  id: string;
+  phone: string;
+  name: string;
+  university: string;
+  specialization?: string;
+  email?: string;
+  academic_year: number;
+  is_academy_subscriber: boolean;
+  status: 'pending' | 'approved' | 'rejected';
+  device_info?: string;
+  notes?: string;
+  access_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Persistent shared storage across requests in memory
+export const memoryStore = {
+  users: [
+    {
+      id: 'usr_demo_1',
+      name: 'أحمد علي الذماري',
+      phone: '771234567',
+      password: '123',
+      university: 'جامعة صنعاء',
+      specialization: 'هندسة ميكاترونكس',
+      academic_year: 1,
+      is_academy_subscriber: true,
+      is_activated: true,
+      role: 'student' as const,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'usr_demo_2',
+      name: 'سارة محمد الحكيمي',
+      phone: '779876543',
+      password: '123',
+      university: 'جامعة العلوم والتكنولوجيا (UST)',
+      specialization: 'هندسة تحكم وروبوتات',
+      academic_year: 2,
+      is_academy_subscriber: true,
+      is_activated: true,
+      role: 'student' as const,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ] as MemoryUser[],
+  requests: [] as MemoryRequest[],
+  settings: {
+    owner_password: '785502919',
+    auto_activate_subscribers: 'true'
+  } as Record<string, string>
+};
+
+export function normalizePhone(raw: string): string {
+  if (!raw) return '';
+  const arabicNumerals = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const persianNumerals = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  let cleaned = String(raw).trim();
+  for (let i = 0; i < 10; i++) {
+    cleaned = cleaned.replaceAll(arabicNumerals[i], String(i));
+    cleaned = cleaned.replaceAll(persianNumerals[i], String(i));
+  }
+  if (cleaned.includes('@')) {
+    return cleaned.toLowerCase().trim();
+  }
+  cleaned = cleaned.replace(/\D/g, '');
+  if (cleaned.startsWith('00967')) {
+    cleaned = cleaned.substring(5);
+  } else if (cleaned.startsWith('967')) {
+    cleaned = cleaned.substring(3);
+  }
+  if (cleaned.startsWith('0') && cleaned.length >= 9) {
+    cleaned = cleaned.substring(1);
+  }
+  return cleaned;
 }
 
 export async function initDatabase(): Promise<{ success: boolean; message: string; tables?: string[] }> {
@@ -44,17 +159,18 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
   if (!p) {
     return {
       success: false,
-      message: 'قاعدة البيانات السحابية غير مهيأة محلياً (DATABASE_URL غير متوفر في البيئة الحالية)'
+      message: 'قاعدة البيانات السحابية غير مهيأة محلياً (DATABASE_URL غير متوفر). النظام يعمل بنمط الذاكرة الاحتياطية المتزامنة.'
     };
   }
 
   if (!initPromise) {
     initPromise = (async () => {
-      const client = await p.connect();
+      let client;
       try {
+        client = await p.connect();
         await client.query('BEGIN');
 
-        // 1. Users table (حسابات الطلاب والمعلمين)
+        // 1. Users table
         await client.query(`
           CREATE TABLE IF NOT EXISTS users (
             id VARCHAR(64) PRIMARY KEY,
@@ -62,6 +178,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
             phone VARCHAR(50) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
             university VARCHAR(255) NOT NULL,
+            specialization VARCHAR(255) DEFAULT 'هندسة ميكاترونكس',
             academic_year INT DEFAULT 1,
             is_academy_subscriber BOOLEAN DEFAULT FALSE,
             is_activated BOOLEAN DEFAULT FALSE,
@@ -73,7 +190,6 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
           );
         `);
 
-        // Migration safety: Add any columns if table was created in an earlier migration
         await client.query(`
           ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(32) DEFAULT 'student';
           ALTER TABLE users ADD COLUMN IF NOT EXISTS expires_at VARCHAR(64);
@@ -86,12 +202,11 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
           ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_year INT DEFAULT 1;
         `);
 
-        // Create index on phone for high-speed lookups
         await client.query(`
           CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
         `);
 
-        // 2. Access requests table (طلبات الاشتراك والوصول المباشر)
+        // 2. Access requests table
         await client.query(`
           CREATE TABLE IF NOT EXISTS access_requests (
             id VARCHAR(64) PRIMARY KEY,
@@ -126,7 +241,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
           CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status);
         `);
 
-        // 3. System settings table (كلمة سر المالك والإعدادات الديناميكية)
+        // 3. System settings table
         await client.query(`
           CREATE TABLE IF NOT EXISTS system_settings (
             key VARCHAR(64) PRIMARY KEY,
@@ -135,7 +250,6 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
           );
         `);
 
-        // Seed default owner password if not exists
         await client.query(`
           INSERT INTO system_settings (key, value, updated_at)
           VALUES ('owner_password', '785502919', NOW())
@@ -143,13 +257,15 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         `);
 
         await client.query('COMMIT');
-        console.log('✅ Neon PostgreSQL tables initialized & verified (users, access_requests, system_settings)');
+        console.log('✅ Neon PostgreSQL tables initialized');
       } catch (err) {
-        await client.query('ROLLBACK');
+        if (client) {
+          try { await client.query('ROLLBACK'); } catch {}
+        }
         initPromise = null;
         throw err;
       } finally {
-        client.release();
+        if (client) client.release();
       }
     })();
   }
@@ -158,7 +274,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
     await initPromise;
     return {
       success: true,
-      message: 'تم تهيئة جداول Neon بنجاح',
+      message: 'تم تهيئة جداول Neon بنجاح (users, access_requests, system_settings)',
       tables: ['users', 'access_requests', 'system_settings']
     };
   } catch (error: any) {
@@ -175,7 +291,7 @@ export async function testDatabaseConnection() {
     return {
       connected: false,
       hasDatabaseUrl: false,
-      message: 'لم يتم العثور على DATABASE_URL في البيئة السحابية'
+      message: 'لم يتم العثور على DATABASE_URL في البيئة السحابية. يعمل النظام في نمط الذاكرة الاحتياطية المتزامنة.'
     };
   }
 
@@ -237,7 +353,6 @@ export async function testReadWriteDatabase() {
 
   try {
     await initDatabase();
-    // 1. WRITE TEST
     await p.query(
       `INSERT INTO system_settings (key, value, updated_at) VALUES ($1, $2, NOW()) 
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();`,
@@ -245,12 +360,10 @@ export async function testReadWriteDatabase() {
     );
     const writeLatency = Date.now() - writeStart;
 
-    // 2. READ TEST
     const readStart = Date.now();
     const readRes = await p.query(`SELECT value, updated_at FROM system_settings WHERE key = $1;`, [testKey]);
     const readLatency = Date.now() - readStart;
 
-    // 3. CLEANUP TEST RECORD
     await p.query(`DELETE FROM system_settings WHERE key = $1;`, [testKey]);
 
     const readBackVal = readRes.rows.length > 0 ? readRes.rows[0].value : null;

@@ -92,7 +92,10 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   const [editUserFeedback, setEditUserFeedback] = useState<{ success: boolean; msg: string; plainPassword?: string } | null>(null);
   const [copiedEditCredentials, setCopiedEditCredentials] = useState<boolean>(false);
 
-  // Neon DB Diagnostics State
+  // Neon DB Diagnostics & Custom URL State
+  const [customDbUrlInput, setCustomDbUrlInput] = useState<string>('');
+  const [isSavingDbUrl, setIsSavingDbUrl] = useState<boolean>(false);
+  const [saveDbUrlFeedback, setSaveDbUrlFeedback] = useState<{ success: boolean; msg: string } | null>(null);
   const [isTestingRw, setIsTestingRw] = useState<boolean>(false);
   const [rwTestResult, setRwTestResult] = useState<any>(null);
   const [isForcingInit, setIsForcingInit] = useState<boolean>(false);
@@ -121,6 +124,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   const [lessonFeedback, setLessonFeedback] = useState<string | null>(null);
 
   const [isRefreshingRequests, setIsRefreshingRequests] = useState<boolean>(false);
+  const [isActivatingAll, setIsActivatingAll] = useState<boolean>(false);
 
   const loadData = async (silentParam?: boolean | React.MouseEvent) => {
     const silent = typeof silentParam === 'boolean' ? silentParam : false;
@@ -274,6 +278,20 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
       await loadData();
     } else {
       setRequestActionFeedback({ success: false, msg: res.message });
+    }
+  };
+
+  const handleApproveAllRequests = async () => {
+    setIsActivatingAll(true);
+    setRequestActionFeedback(null);
+    try {
+      const res = await authStorage.activateAllPendingRequestsInDatabase();
+      setRequestActionFeedback({ success: res.success, msg: res.message });
+      await loadData();
+    } catch {
+      setRequestActionFeedback({ success: false, msg: 'حدث خطأ أثناء تفعيل الطلبات' });
+    } finally {
+      setIsActivatingAll(false);
     }
   };
 
@@ -658,12 +676,23 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                       loadData(false);
                     }}
                     disabled={isRefreshingRequests}
-                    className="px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 transition flex items-center gap-1.5 font-bold text-[11px]"
+                    className="px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 transition flex items-center gap-1.5 font-bold text-[11px] cursor-pointer"
                     title="تحديث فوري من قاعدة بيانات Neon السحابية"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingRequests ? 'animate-spin' : ''}`} />
                     <span>تحديث فوري</span>
                   </button>
+                  {accessRequests.filter(r => r.status === 'pending').length > 0 && (
+                    <button
+                      onClick={handleApproveAllRequests}
+                      disabled={isActivatingAll}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 font-bold text-[11px] shadow shadow-emerald-950/40 cursor-pointer"
+                      title="تفعيل جميع طلبات الاشتراك المعلقة فورياً"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>{isActivatingAll ? 'جارٍ التفعيل...' : `تفعيل الكل (${accessRequests.filter(r => r.status === 'pending').length})`}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -824,6 +853,18 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                                     </button>
                                   </>
                                 )}
+                                <a
+                                  href={`https://wa.me/967${req.phone.replace(/\D/g, '').replace(/^0/, '')}?text=${encodeURIComponent(
+                                    `مرحباً بك يا مهندس ${req.name} في المختبر الافتراضي لهندسة الميكاترونكس!\n\nكود الدخول الخاص بك للمعمل هو: 785502919\n\nأدخل الكود في شاشة "أدخل الكود للدخول للمعمل" لتفعيل وصولك فوراً.`
+                                  )}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2 py-1 bg-emerald-600/25 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/35 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                                  title="إرسال كود الدخول للطالب عبر واتساب"
+                                >
+                                  <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>إرسال الكود</span>
+                                </a>
                                 <button
                                   onClick={() => handleQuickCreateForRequest(req)}
                                   className="px-2.5 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1"

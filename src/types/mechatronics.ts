@@ -23,6 +23,7 @@ export interface StudentUser {
   role: 'student' | 'owner';
   expiresAt?: string;
   accessDuration?: string;
+  accessCode?: string;
 }
 
 export interface AccessRequest {
@@ -37,6 +38,7 @@ export interface AccessRequest {
   status: 'pending' | 'approved' | 'rejected';
   deviceInfo?: string;
   notes?: string;
+  accessCode?: string;
   createdAt?: string;
 }
 

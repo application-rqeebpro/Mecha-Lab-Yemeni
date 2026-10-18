@@ -1,4 +1,12 @@
-import { testDatabaseConnection, getDatabaseUrl, initDatabase, getPool, testReadWriteDatabase } from './_db';
+import { 
+  testDatabaseConnection, 
+  getDatabaseUrl, 
+  initDatabase, 
+  getPool, 
+  testReadWriteDatabase,
+  setCustomDatabaseUrl,
+  memoryStore 
+} from './_db';
 
 export default async function handler(req: any, res: any) {
   // Set CORS headers
@@ -13,12 +21,37 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (req.method === 'POST') {
-      // Allows testing a connection string, forcing re-init, or testing real read/write
-      const { action } = req.body || {};
+      const { action, databaseUrl } = req.body || {};
+
+      // 1. Set / Update database URL dynamically from Owner UI
+      if (action === 'set-url') {
+        const cleanUrl = String(databaseUrl || '').trim();
+        if (cleanUrl) {
+          setCustomDatabaseUrl(cleanUrl);
+          const testRes = await testDatabaseConnection();
+          return res.status(200).json({
+            success: testRes.connected,
+            message: testRes.connected 
+              ? `تم حفظ وتوصيل قاعدة بيانات Neon بنجاح!` 
+              : `تم حفظ الرابط ولكن تعذر الاتصال: ${testRes.message || ''}`,
+            status: testRes
+          });
+        } else {
+          setCustomDatabaseUrl(null);
+          return res.status(200).json({
+            success: true,
+            message: 'تمت إزالة رابط قاعدة البيانات المخصص والعودة للبيئة الافتراضية'
+          });
+        }
+      }
+
+      // 2. Force init database schema
       if (action === 'init') {
         const initResult = await initDatabase();
         return res.status(200).json(initResult);
       }
+
+      // 3. Test real read/write
       if (action === 'test-rw') {
         const rwResult = await testReadWriteDatabase();
         return res.status(200).json(rwResult);
@@ -40,13 +73,20 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       ...status,
       maskedDatabaseUrl: maskedUrl,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      fallbackStore: {
+        usersCount: memoryStore.users.length,
+        requestsCount: memoryStore.requests.length,
+        pendingCount: memoryStore.requests.filter(r => r.status === 'pending').length
+      }
     });
   } catch (error: any) {
     console.error('Error in /api/db-status:', error);
-    return res.status(500).json({
+    return res.status(200).json({
       connected: false,
-      error: error?.message || String(error)
+      hasDatabaseUrl: Boolean(getDatabaseUrl()),
+      error: error?.message || String(error),
+      message: `خطأ أثناء فحص قاعدة البيانات: ${error?.message || String(error)}`
     });
   }
 }
