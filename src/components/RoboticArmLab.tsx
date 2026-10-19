@@ -8,6 +8,7 @@ export const RoboticArmLab: React.FC = () => {
   const [theta3, setTheta3] = useState<number>(-10); // Wrist / Tool
   const [gripperOpen, setGripperOpen] = useState<boolean>(true);
   const [isAutoMoving, setIsAutoMoving] = useState<boolean>(false);
+  const [isContinuousRun, setIsContinuousRun] = useState<boolean>(false);
   const [pickedItem, setPickedItem] = useState<boolean>(false);
 
   // Link lengths (cm)
@@ -103,6 +104,25 @@ export const RoboticArmLab: React.FC = () => {
     }
     setIsAutoMoving(false);
   };
+
+  // Continuous loop handler
+  useEffect(() => {
+    let isMounted = true;
+    const runLoop = async () => {
+      while (isMounted && isContinuousRun) {
+        await runPickAndPlace();
+        if (isMounted && isContinuousRun) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+    };
+    if (isContinuousRun) {
+      runLoop();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [isContinuousRun]);
 
   // Render Canvas
   useEffect(() => {
@@ -281,16 +301,33 @@ export const RoboticArmLab: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={runPickAndPlace}
-            disabled={isAutoMoving}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-              isAutoMoving
-                ? 'bg-slate-800 text-slate-500'
+            onClick={() => {
+              if (isContinuousRun) {
+                setIsContinuousRun(false);
+              } else {
+                setIsContinuousRun(true);
+              }
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+              isContinuousRun
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40'
                 : 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/40'
             }`}
           >
-            <Play className="w-3.5 h-3.5" />
-            <span>محاكاة المناولة والنقل (Pick & Place Demo)</span>
+            <Play className={`w-3.5 h-3.5 ${isContinuousRun ? 'fill-current' : ''}`} />
+            <span>{isContinuousRun ? 'الروبوت قيد التشغيل المستمر (إيقاف)' : 'تشغيل الروبوت آلياً (RUN)'}</span>
+          </button>
+          <button
+            onClick={runPickAndPlace}
+            disabled={isAutoMoving || isContinuousRun}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+              isAutoMoving || isContinuousRun
+                ? 'bg-slate-800 text-slate-500'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>دورة واحدة (Single Cycle)</span>
           </button>
           <button
             onClick={() => {

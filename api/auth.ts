@@ -361,23 +361,12 @@ export default async function handler(req: any, res: any) {
       if (!rawCode) {
         return res.status(400).json({
           success: false,
-          message: 'يرجى إدخال كود الدخول للمعمل'
+          message: 'يرجى إدخال كود التفعيل للدخول للمعمل'
         });
       }
 
-      // Recognized master codes:
-      // Primary: 785502919 or 7855 or current owner password or official 200 student codes
-      const ownerPass = (memoryStore.settings['owner_password'] || '785502919').toLowerCase();
-      const validCodes = [
-        '785502919',
-        '7855',
-        '785502',
-        ownerPass,
-        'mechatronics2026',
-        'aseel2026',
-        '123456',
-        'engaseel'
-      ];
+      // Check official codes catalog
+      const isOfficial = isValidOfficialCode(upperCode);
 
       const memUser = memoryStore.users.find(u => 
         u.phone === cleanPhone || 
@@ -393,15 +382,80 @@ export default async function handler(req: any, res: any) {
       );
 
       const userCustomCode = (memUser?.access_code || memReq?.access_code || '').trim();
-      const isMatch = validCodes.includes(lowerCode) || 
-                      isValidOfficialCode(upperCode) ||
-                      (userCustomCode && (lowerCode === userCustomCode.toLowerCase() || upperCode === userCustomCode.toUpperCase()));
+      const isCustomApproved = Boolean(userCustomCode && (upperCode === userCustomCode.toUpperCase()));
 
-      if (!isMatch) {
+      if (!isOfficial && !isCustomApproved) {
         return res.status(400).json({
           success: false,
-          message: 'كود الدخول غير صحيح! للحصول على الكود أرسل رسالة إلى الرقم 785502919'
+          message: 'كود الدخول غير صحيح! يرجى إدخال الكود المعتمد الممنوح لك من إدارة المنصة.'
         });
+      }
+
+      // Single-use enforcement: Check if code has already been used by another phone
+      const existingCodeUsage = memoryStore.codeUsage.find(u => u.code.toUpperCase() === upperCode);
+      if (existingCodeUsage && existingCodeUsage.phone !== cleanPhone && existingCodeUsage.phone !== rawPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'هذا الكود مستخدم بالفعل لرقم هاتف آخر! كل كود مخصص لمشترك واحد فقط.'
+        });
+      }
+
+      // Check if this phone number already has a different code assigned
+      const existingPhoneUsage = memoryStore.codeUsage.find(u => u.phone === cleanPhone || u.phone === rawPhone);
+      if (existingPhoneUsage && existingPhoneUsage.code.toUpperCase() !== upperCode) {
+        return res.status(400).json({
+          success: false,
+          message: `هذا الرقم مفعل مسبقاً بكود آخر. لا يمكن استخدام أكثر من كود لنفس الرقم.`
+        });
+      }
+
+      // Check database if pool is active
+      if (pool) {
+        try {
+          const dbCodeUsage = await pool.query('SELECT phone FROM activation_code_usage WHERE code = $1 LIMIT 1', [upperCode]);
+          if (dbCodeUsage.rows.length > 0) {
+            const boundPhone = dbCodeUsage.rows[0].phone;
+            if (boundPhone !== cleanPhone && boundPhone !== rawPhone) {
+              return res.status(400).json({
+                success: false,
+                message: 'هذا الكود مستخدم بالفعل لرقم هاتف آخر! كل كود مخصص لمشترك واحد فقط.'
+              });
+            }
+          }
+
+          const dbPhoneUsage = await pool.query('SELECT code FROM activation_code_usage WHERE phone = $1 OR phone = $2 LIMIT 1', [cleanPhone, rawPhone]);
+          if (dbPhoneUsage.rows.length > 0) {
+            const boundCode = dbPhoneUsage.rows[0].code;
+            if (boundCode.toUpperCase() !== upperCode) {
+              return res.status(400).json({
+                success: false,
+                message: 'هذا الرقم مفعل مسبقاً بكود آخر. لا يمكن استخدام أكثر من كود لنفس الرقم.'
+              });
+            }
+          }
+        } catch {}
+      }
+
+      // Record 1-to-1 binding in memoryStore
+      if (!existingCodeUsage) {
+        memoryStore.codeUsage.push({
+          code: upperCode,
+          phone: cleanPhone,
+          student_name: memUser?.name || 'مشترك ميكاترونكس',
+          used_at: new Date().toISOString()
+        });
+      }
+
+      // Record in database
+      if (pool && cleanPhone) {
+        try {
+          await pool.query(
+            `INSERT INTO activation_code_usage (code, phone, student_name, used_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (code) DO NOTHING;`,
+            [upperCode, cleanPhone, memUser?.name || 'مشترك ميكاترونكس']
+          );
+        } catch {}
       }
 
       // Code is valid! Activate account in memoryStore & database

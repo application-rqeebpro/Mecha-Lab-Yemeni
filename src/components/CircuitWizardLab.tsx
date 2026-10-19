@@ -470,7 +470,7 @@ export const CW_SAMPLE_CIRCUITS: CWSampleCircuit[] = [
     },
     elements: [
       { id: 'bat1', ref: 'B1', kind: 'battery_9v', name: '9V Battery', nameAr: 'بطارية 9V', x: 130, y: 310, rotation: 0, value: 9, unit: 'V' },
-      { id: 'sw1', ref: 'SW1', kind: 'push_button', name: 'Push SW1', nameAr: 'زر ضاغط', x: 215, y: 175, rotation: 0, value: 0, unit: '', state: false },
+      { id: 'sw1', ref: 'SW1', kind: 'push_button', name: 'Push SW1', nameAr: 'زر ضاغط', x: 215, y: 175, rotation: 0, value: 0, unit: '', state: true },
       { id: 'bz1', ref: 'BZ1', kind: 'buzzer', name: 'Piezo Buzzer', nameAr: 'جرس تنبيه', x: 275, y: 285, rotation: 0, value: 9, unit: 'V' }
     ],
     wires: [
@@ -1017,8 +1017,15 @@ export function CircuitWizardLab() {
 
   const handleLoadSample = (sample: CWSampleCircuit) => {
     pushHistory();
+    // Ensure all switches and buttons are closed (state: true) so the circuit runs immediately!
+    const elementsToLoad = sample.elements.map(el => {
+      if (el.kind === 'switch_spst' || el.kind === 'push_button') {
+        return { ...el, state: true };
+      }
+      return { ...el };
+    });
     setActiveCircuit(sample);
-    setElements(sample.elements);
+    setElements(elementsToLoad);
     setWires(sample.wires);
     setSelectedCompId(null);
     setSelectedWireId(null);
@@ -1820,6 +1827,13 @@ export function CircuitWizardLab() {
             onClick={() => {
               setIsSimulating(true);
               setIsPaused(false);
+              // Ensure switches and pushbuttons are closed so project runs immediately
+              setElements(prev => prev.map(el => {
+                if (el.kind === 'switch_spst' || el.kind === 'push_button') {
+                  return { ...el, state: true };
+                }
+                return el;
+              }));
             }}
             className={`px-2 py-0.5 flex items-center gap-1 font-bold rounded-xs text-xs transition ${
               isSimulating && !isPaused
@@ -2378,16 +2392,17 @@ export function CircuitWizardLab() {
                       strokeWidth="2.8"
                       strokeLinecap="round"
                     />
-                    {/* Current Flow Mode: Animated Charge Dots */}
-                    {mode === 'current_flow' && solvedState.isLoopActive && (
+                    {/* Current Flow: Animated Charge Dots */}
+                    {solvedState.isLoopActive && isSimulating && !isPaused && (
                       <path
                         d={pathStr}
                         fill="none"
-                        stroke="#22c55e"
-                        strokeWidth="3.2"
+                        stroke={mode === 'current_flow' ? '#22c55e' : '#facc15'}
+                        strokeWidth={mode === 'current_flow' ? '3.5' : '2.4'}
                         strokeDasharray="4 8"
-                        strokeDashoffset={-currentTick * 2}
+                        strokeDashoffset={-currentTick * 2.5}
                         strokeLinecap="round"
+                        opacity={mode === 'current_flow' ? 1 : 0.9}
                       />
                     )}
                   </g>

@@ -217,7 +217,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           type: 'success',
           requiresActivation: true,
           registeredPhone: cleanPhone,
-          message: 'تم إنشاء حسابك بنجاح! أدخل الكود للدخول للمعمل. وللحصول على الكود أرسل رسالة إلى الرقم 785502919 لإرسال الكود.'
+          message: 'تم إنشاء حسابك بنجاح! أدخل كود التفعيل المعتمد المخصص لرقمك للدخول للمعمل. ولطلب الكود، تواصل مع إدارة المختبر عبر واتساب: 785502919.'
         });
       } else {
         setRegFeedback({
@@ -344,7 +344,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    للحصول على الكود أرسل رسالة إلى الرقم <span className="font-mono font-bold text-emerald-400">785502919</span> لإرسال الكود
+                    كود التفعيل مخصص لمشترك واحد فقط • للتواصل عبر واتساب: <span className="font-mono font-bold text-emerald-400">785502919</span>
                   </p>
                 </div>
               </div>
@@ -558,10 +558,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                           <KeyRound className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                           <div className="space-y-1">
                             <span className="text-xs font-bold text-white block">
-                              أدخل الكود للدخول للمعمل
+                              أدخل كود التفعيل للدخول للمعمل
                             </span>
                             <p className="text-[11px] text-emerald-200/90 leading-relaxed">
-                              للحصول على الكود أرسل رسالة إلى الرقم <span className="font-mono font-bold text-white">785502919</span> لإرسال الكود فورياً.
+                              كود التفعيل مخصص لرقمك فقط. ولطلب الكود، تواصل مع المالك عبر واتساب: <span className="font-mono font-bold text-white">785502919</span>.
                             </p>
                           </div>
                         </div>

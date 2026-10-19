@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { getPool, initDatabase, memoryStore, MemoryUser, normalizePhone } from './_db';
+import { OFFICIAL_ACTIVATION_CODES } from '../src/data/activationCodes';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -137,32 +138,166 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      // Compute 1-to-1 Activation Code Status
+      let codeUsages: Array<{ code: string; phone: string; student_name?: string; used_at: string }> = [...memoryStore.codeUsage];
+      if (pool) {
+        try {
+          const usageQuery = await pool.query('SELECT code, phone, student_name, used_at FROM activation_code_usage ORDER BY used_at DESC;');
+          const dbUsages = usageQuery.rows || [];
+          const seen = new Set(codeUsages.map(u => u.code.toUpperCase()));
+          for (const u of dbUsages) {
+            const upper = u.code.toUpperCase();
+            if (!seen.has(upper)) {
+              codeUsages.push({
+                code: upper,
+                phone: u.phone,
+                student_name: u.student_name,
+                used_at: u.used_at ? new Date(u.used_at).toISOString() : new Date().toISOString()
+              });
+              seen.add(upper);
+            }
+          }
+        } catch {}
+      }
+
+      const usageMap = new Map<string, { phone: string; student_name?: string; used_at: string }>();
+      codeUsages.forEach(u => {
+        usageMap.set(u.code.toUpperCase(), u);
+      });
+
+      const activationCodes = OFFICIAL_ACTIVATION_CODES.map(code => {
+        const upper = code.toUpperCase();
+        const usage = usageMap.get(upper);
+        return {
+          code: upper,
+          isUsed: Boolean(usage),
+          phone: usage?.phone || '',
+          studentName: usage?.student_name || '',
+          usedAt: usage?.used_at || ''
+        };
+      });
+
+      const usedCodesCount = activationCodes.filter(c => c.isUsed).length;
+
       return res.status(200).json({
         success: true,
         dbConnected: Boolean(pool),
         users,
         requests,
+        activationCodes,
         ownerPassword,
         stats: {
           totalUsers: users.length,
           activatedUsers: users.filter(u => u.isActivated).length,
-          pendingRequests: requests.filter(r => r.status === 'pending').length
+          pendingRequests: requests.filter(r => r.status === 'pending').length,
+          totalCodes: OFFICIAL_ACTIVATION_CODES.length,
+          usedCodes: usedCodesCount,
+          availableCodes: OFFICIAL_ACTIVATION_CODES.length - usedCodesCount
         }
       });
     } catch (error: any) {
       console.error('Error in owner data:', error);
+      const fallbackUsageMap = new Map(memoryStore.codeUsage.map(u => [u.code.toUpperCase(), u]));
+      const fallbackCodes = OFFICIAL_ACTIVATION_CODES.map(code => {
+        const upper = code.toUpperCase();
+        const usage = fallbackUsageMap.get(upper);
+        return {
+          code: upper,
+          isUsed: Boolean(usage),
+          phone: usage?.phone || '',
+          studentName: usage?.student_name || '',
+          usedAt: usage?.used_at || ''
+        };
+      });
+      const fallbackUsedCount = fallbackCodes.filter(c => c.isUsed).length;
+
       return res.status(200).json({
         success: true,
         dbConnected: false,
         users: memoryStore.users,
         requests: memoryStore.requests,
+        activationCodes: fallbackCodes,
         ownerPassword: memoryStore.settings['owner_password'],
         stats: {
           totalUsers: memoryStore.users.length,
           activatedUsers: memoryStore.users.filter(u => u.is_activated).length,
-          pendingRequests: memoryStore.requests.filter(r => r.status === 'pending').length
+          pendingRequests: memoryStore.requests.filter(r => r.status === 'pending').length,
+          totalCodes: OFFICIAL_ACTIVATION_CODES.length,
+          usedCodes: fallbackUsedCount,
+          availableCodes: OFFICIAL_ACTIVATION_CODES.length - fallbackUsedCount
         }
       });
+    }
+  }
+
+  // 1.5. RELEASE / UNBIND CODE
+  if (action === 'release-code') {
+    try {
+      const { code } = req.body || {};
+      const upperCode = String(code || '').trim().toUpperCase();
+      if (!upperCode) {
+        return res.status(400).json({ success: false, message: 'رمز الكود مطلوب' });
+      }
+
+      memoryStore.codeUsage = memoryStore.codeUsage.filter(u => u.code.toUpperCase() !== upperCode);
+      if (pool) {
+        try {
+          await pool.query('DELETE FROM activation_code_usage WHERE code = $1;', [upperCode]);
+        } catch {}
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `تم إلغاء ربط الكود (${upperCode}) بنجاح وأصبح متاحاً للاستخدام من جديد.`
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // 1.6. ASSIGN CODE MANUALLY TO A PHONE
+  if (action === 'assign-code') {
+    try {
+      const { code, phone, studentName } = req.body || {};
+      const upperCode = String(code || '').trim().toUpperCase();
+      const rawPhone = String(phone || '').trim();
+      const cleanPhone = normalizePhone(rawPhone) || rawPhone;
+
+      if (!upperCode || !cleanPhone) {
+        return res.status(400).json({ success: false, message: 'الكود ورقم الهاتف مطلوبان' });
+      }
+
+      // Check if code already used
+      const existing = memoryStore.codeUsage.find(u => u.code.toUpperCase() === upperCode);
+      if (existing && existing.phone !== cleanPhone) {
+        return res.status(400).json({ success: false, message: 'هذا الكود مستخدم بالفعل لرقم آخر' });
+      }
+
+      // Remove previous code for this phone if any
+      memoryStore.codeUsage = memoryStore.codeUsage.filter(u => u.phone !== cleanPhone && u.code.toUpperCase() !== upperCode);
+      memoryStore.codeUsage.push({
+        code: upperCode,
+        phone: cleanPhone,
+        student_name: studentName || 'مشترك ميكاترونكس',
+        used_at: new Date().toISOString()
+      });
+
+      if (pool) {
+        try {
+          await pool.query('DELETE FROM activation_code_usage WHERE code = $1 OR phone = $2;', [upperCode, cleanPhone]);
+          await pool.query(
+            'INSERT INTO activation_code_usage (code, phone, student_name, used_at) VALUES ($1, $2, $3, NOW());',
+            [upperCode, cleanPhone, studentName || 'مشترك ميكاترونكس']
+          );
+        } catch {}
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `تم تخصيص وربط الكود (${upperCode}) بالرقم (${cleanPhone}) بنجاح.`
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
     }
   }
 

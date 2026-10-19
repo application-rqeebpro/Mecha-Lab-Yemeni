@@ -72,8 +72,23 @@ export const PLCLadderLab: React.FC = () => {
           </div>
         </div>
 
-        {/* Status Indicators */}
+        {/* Status Indicators & Run Toggle */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (eStop) setEStop(false);
+              setConveyorMotor(prev => !prev);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+              conveyorMotor && !eStop
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+            }`}
+          >
+            <Play className={`w-3.5 h-3.5 ${conveyorMotor && !eStop ? 'fill-current' : ''}`} />
+            <span>{conveyorMotor && !eStop ? 'خط الإنتاج يعمل (إيقاف)' : 'تشغيل خط الإنتاج (RUN)'}</span>
+          </button>
+
           <div className="flex items-center gap-1.5 text-xs font-mono">
             <span className={`w-3 h-3 rounded-full ${greenLight ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-700'}`}></span>
             <span className="text-slate-300">RUN (Q0.2)</span>
@@ -147,6 +162,9 @@ export const PLCLadderLab: React.FC = () => {
           <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-800">
             {/* Start Pushbutton (Normally Open) */}
             <button
+              onClick={() => {
+                if (!eStop) setConveyorMotor(true);
+              }}
               onMouseDown={() => {
                 setStartPB(true);
                 if (!eStop) setConveyorMotor(true);
@@ -157,7 +175,7 @@ export const PLCLadderLab: React.FC = () => {
                 if (!eStop) setConveyorMotor(true);
               }}
               onTouchEnd={() => setStartPB(false)}
-              className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 rounded-xl font-bold text-xs text-white shadow-lg shadow-emerald-900/40 flex flex-col items-center gap-1 transition"
+              className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 rounded-xl font-bold text-xs text-white shadow-lg shadow-emerald-900/40 flex flex-col items-center gap-1 transition cursor-pointer"
             >
               <span>تشغيل (START)</span>
               <span className="text-[10px] font-mono opacity-80">I0.0 (NO)</span>
@@ -165,6 +183,9 @@ export const PLCLadderLab: React.FC = () => {
 
             {/* Stop Pushbutton (Normally Closed) */}
             <button
+              onClick={() => {
+                setConveyorMotor(false);
+              }}
               onMouseDown={() => {
                 setStopPB(true);
                 setConveyorMotor(false);
@@ -175,7 +196,7 @@ export const PLCLadderLab: React.FC = () => {
                 setConveyorMotor(false);
               }}
               onTouchEnd={() => setStopPB(false)}
-              className="py-2.5 px-2 bg-rose-700 hover:bg-rose-600 active:scale-95 rounded-xl font-bold text-xs text-white shadow-lg shadow-rose-900/40 flex flex-col items-center gap-1 transition"
+              className="py-2.5 px-2 bg-rose-700 hover:bg-rose-600 active:scale-95 rounded-xl font-bold text-xs text-white shadow-lg shadow-rose-900/40 flex flex-col items-center gap-1 transition cursor-pointer"
             >
               <span>إيقاف (STOP)</span>
               <span className="text-[10px] font-mono opacity-80">I0.1 (NC)</span>

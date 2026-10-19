@@ -83,14 +83,14 @@ export const PneumaticsLab: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setCycleMode(!cycleMode)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               cycleMode
                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40'
             }`}
           >
-            <ArrowRightLeft className="w-3.5 h-3.5" />
-            <span>{cycleMode ? 'حركة دورية مستمرة (Auto Cycle)' : 'تشغيل دوري'}</span>
+            <Play className={`w-3.5 h-3.5 ${cycleMode ? 'fill-current' : ''}`} />
+            <span>{cycleMode ? 'النظام النيوماتيكي يعمل (إيقاف)' : 'تشغيل النظام النيوماتيكي (RUN)'}</span>
           </button>
         </div>
       </div>

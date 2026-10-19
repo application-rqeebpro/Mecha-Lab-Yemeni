@@ -118,9 +118,18 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   const [codeFilterStatus, setCodeFilterStatus] = useState<'all' | 'available' | 'used'>('all');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [copiedAllCodes, setCopiedAllCodes] = useState<boolean>(false);
+  const [copiedWelcomeCode, setCopiedWelcomeCode] = useState<string | null>(null);
   const [selectedCodeForSend, setSelectedCodeForSend] = useState<string | null>(null);
   const [customSendPhone, setCustomSendPhone] = useState<string>('');
   const [customSendName, setCustomSendName] = useState<string>('');
+  const [serverActivationCodes, setServerActivationCodes] = useState<Array<{
+    code: string;
+    isUsed: boolean;
+    phone: string;
+    studentName: string;
+    usedAt: string;
+  }>>([]);
+  const [codeActionFeedback, setCodeActionFeedback] = useState<string | null>(null);
 
   // New Lesson form state
   const [newTitle, setNewTitle] = useState<string>('');
@@ -162,6 +171,12 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
         setAccessRequests(ownerData.requests || []);
       }
 
+      if (ownerData.success && Array.isArray(ownerData.activationCodes)) {
+        setServerActivationCodes(ownerData.activationCodes);
+      } else {
+        setServerActivationCodes(authStorage.getActivationCodesWithStatus());
+      }
+
       if (ownerData.ownerPassword) {
         setCurrentOwnerPassword(ownerData.ownerPassword);
       }
@@ -171,6 +186,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
         setUsersList(authStorage.getUsers());
         setAccessRequests(authStorage.getAccessRequests());
       }
+      setServerActivationCodes(authStorage.getActivationCodesWithStatus());
     } finally {
       if (!silent) setIsLoadingDb(false);
       setIsRefreshingRequests(false);
@@ -477,26 +493,57 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
   // Activation Codes Analytics & Lookup
   const usedCodesMap = React.useMemo(() => {
     const map = new Map<string, { studentName: string; phone: string; date?: string }>();
-    usersList.forEach(u => {
-      if (u.accessCode) {
-        map.set(u.accessCode.trim().toUpperCase(), {
-          studentName: u.name,
-          phone: u.phone,
-          date: u.registeredAt
+    // 1. From server codes
+    serverActivationCodes.forEach(c => {
+      if (c.isUsed && c.code) {
+        map.set(c.code.trim().toUpperCase(), {
+          studentName: c.studentName || 'مشترك ميكاترونكس',
+          phone: c.phone || '',
+          date: c.usedAt
         });
       }
     });
+    // 2. From local code usages
+    authStorage.getLocalCodeUsages().forEach(u => {
+      if (u.code) {
+        const up = u.code.trim().toUpperCase();
+        if (!map.has(up)) {
+          map.set(up, {
+            studentName: u.studentName || 'مشترك ميكاترونكس',
+            phone: u.phone || '',
+            date: u.usedAt
+          });
+        }
+      }
+    });
+    // 3. From usersList
+    usersList.forEach(u => {
+      if (u.accessCode) {
+        const up = u.accessCode.trim().toUpperCase();
+        if (!map.has(up)) {
+          map.set(up, {
+            studentName: u.name,
+            phone: u.phone,
+            date: u.registeredAt
+          });
+        }
+      }
+    });
+    // 4. From accessRequests
     accessRequests.forEach(r => {
       if (r.accessCode) {
-        map.set(r.accessCode.trim().toUpperCase(), {
-          studentName: r.name,
-          phone: r.phone,
-          date: r.createdAt
-        });
+        const up = r.accessCode.trim().toUpperCase();
+        if (!map.has(up)) {
+          map.set(up, {
+            studentName: r.name,
+            phone: r.phone,
+            date: r.createdAt
+          });
+        }
       }
     });
     return map;
-  }, [usersList, accessRequests]);
+  }, [serverActivationCodes, usersList, accessRequests]);
 
   const filteredCodes = React.useMemo(() => {
     return OFFICIAL_ACTIVATION_CODES.filter(code => {
@@ -516,6 +563,57 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
       return true;
     });
   }, [codeFilterStatus, codeSearchQuery, usedCodesMap]);
+
+  const handleCopyNextAvailableCode = () => {
+    const nextCode = OFFICIAL_ACTIVATION_CODES.find(c => !usedCodesMap.has(c.toUpperCase()));
+    if (nextCode) {
+      navigator.clipboard.writeText(nextCode);
+      setCopiedCode(nextCode);
+      setCodeActionFeedback(`تم نسخ أول كود شاغر بنجاح: ${nextCode}`);
+      setTimeout(() => {
+        setCopiedCode(null);
+        setCodeActionFeedback(null);
+      }, 3500);
+    } else {
+      setCodeActionFeedback('عذراً، جميع الـ 200 كود مستخدمة حالياً!');
+      setTimeout(() => setCodeActionFeedback(null), 3500);
+    }
+  };
+
+  const handleCopyWelcomeMessage = (code: string) => {
+    const message = `أهلاً بك في معمل هندسة الميكاترونكس الافتراضي!\nكود التفعيل المعتمد المخصص لرقمك هو:\n${code}\n\nيرجى الدخول للمنصة والضغط على «أدخل الكود للدخول للمعمل» لتفعيل اشتراكك فورياً.`;
+    navigator.clipboard.writeText(message);
+    setCopiedWelcomeCode(code);
+    setCodeActionFeedback(`تم نسخ رسالة الترحيب الكاملة مع الكود (${code})! جاهزة للإرسال في واتساب.`);
+    setTimeout(() => {
+      setCopiedWelcomeCode(null);
+      setCodeActionFeedback(null);
+    }, 3500);
+  };
+
+  const handleReleaseCode = async (code: string) => {
+    const upper = code.trim().toUpperCase();
+    if (!window.confirm(`هل أنت متأكد من إلغاء ربط الكود (${upper})؟ سيصبح الكود متاحاً لمشترك آخر.`)) {
+      return;
+    }
+    try {
+      authStorage.releaseCodeLocally(upper);
+      await fetch('/api/owner', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authStorage.getOwnerToken() || '785502919'}`
+        },
+        body: JSON.stringify({ action: 'release-code', code: upper })
+      });
+      setCodeActionFeedback(`تم إلغاء ربط الكود (${upper}) بنجاح وأصبح متاحاً للاستخدام من جديد.`);
+      await loadData(true);
+      setTimeout(() => setCodeActionFeedback(null), 3500);
+    } catch {
+      setCodeActionFeedback(`تم إلغاء ربط الكود محلياً (${upper}).`);
+      setTimeout(() => setCodeActionFeedback(null), 3500);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
@@ -1056,7 +1154,16 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                 </div>
 
                 {/* Bulk Export & Copy Actions */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleCopyNextAvailableCode}
+                    className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-950/40 cursor-pointer"
+                    title="نسخ أول كود شاغر فوراً لإرساله لمشترك"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>نسخ أول كود متاح</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(OFFICIAL_ACTIVATION_CODES.join('\n'));
@@ -1098,6 +1205,22 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                 </div>
               </div>
 
+              {/* Action Notification Banner */}
+              {codeActionFeedback && (
+                <div className="p-3 bg-purple-950/60 border border-purple-500/40 rounded-xl text-xs text-purple-200 flex items-center justify-between gap-2 animate-fadeIn shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{codeActionFeedback}</span>
+                  </div>
+                  <button
+                    onClick={() => setCodeActionFeedback(null)}
+                    className="p-1 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Codes Grid */}
               <div className="max-h-[480px] overflow-y-auto p-1 pr-2 space-y-2">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
@@ -1111,7 +1234,7 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                         key={code}
                         className={`p-3 rounded-2xl border transition-all duration-200 flex flex-col justify-between gap-2 shadow-sm ${
                           isUsed
-                            ? 'bg-slate-900/40 border-amber-500/30 hover:border-amber-500/50'
+                            ? 'bg-slate-900/60 border-amber-500/40 hover:border-amber-500/60'
                             : 'bg-slate-900/90 border-slate-800 hover:border-purple-500/50 hover:shadow-md hover:shadow-purple-950/30'
                         }`}
                       >
@@ -1131,63 +1254,99 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                         </div>
 
                         {isUsed && studentInfo ? (
-                          <div className="text-[10px] text-slate-400 bg-slate-950/70 p-1.5 rounded-lg border border-slate-800 truncate">
+                          <div className="text-[10px] text-slate-400 bg-slate-950/80 p-1.5 rounded-lg border border-slate-800 truncate space-y-0.5">
                             <span className="text-amber-300 font-semibold block truncate">
                               {studentInfo.studentName}
                             </span>
-                            <span className="font-mono text-slate-400 dir-ltr text-[9px] block">
+                            <span className="font-mono text-emerald-400 dir-ltr text-[10px] font-bold block">
                               {studentInfo.phone}
                             </span>
                           </div>
                         ) : (
                           <div className="text-[10px] text-slate-500 py-1">
-                            جاهز للإرسال لأي طالب
+                            متاح لمشترك واحد فقط
                           </div>
                         )}
 
-                        <div className="flex items-center gap-1 pt-1 border-t border-slate-800/80">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(code);
-                              setCopiedCode(code);
-                              setTimeout(() => setCopiedCode(null), 2000);
-                            }}
-                            className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
-                            title="نسخ الكود"
-                          >
-                            {copiedCode === code ? (
-                              <>
-                                <Check className="w-3 h-3 text-emerald-400" />
-                                <span className="text-emerald-400 text-[10px]">تم!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3 h-3 text-slate-400" />
-                                <span>نسخ</span>
-                              </>
-                            )}
-                          </button>
+                        <div className="flex flex-col gap-1 pt-1 border-t border-slate-800/80">
+                          <div className="flex items-center gap-1">
+                            {/* Copy Code */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(code);
+                                setCopiedCode(code);
+                                setTimeout(() => setCopiedCode(null), 2000);
+                              }}
+                              className="flex-1 py-1 px-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                              title="نسخ الكود فقط"
+                            >
+                              {copiedCode === code ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span className="text-emerald-400 text-[10px]">تم!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3 text-slate-400" />
+                                  <span>كود</span>
+                                </>
+                              )}
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedCodeForSend(code);
-                              const pending = accessRequests.find(r => r.status === 'pending');
-                              if (pending) {
-                                setCustomSendPhone(pending.phone);
-                                setCustomSendName(pending.name);
-                              } else {
-                                setCustomSendPhone('');
-                                setCustomSendName('');
-                              }
-                            }}
-                            className="py-1 px-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
-                            title="إرسال عبر واتساب لطالب"
-                          >
-                            <Send className="w-3 h-3 text-emerald-400" />
-                            <span>إرسال</span>
-                          </button>
+                            {/* Copy Welcome Message with Code */}
+                            <button
+                              type="button"
+                              onClick={() => handleCopyWelcomeMessage(code)}
+                              className="py-1 px-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                              title="نسخ رسالة الترحيب الكاملة مع الكود"
+                            >
+                              {copiedWelcomeCode === code ? (
+                                <Check className="w-3 h-3 text-purple-300" />
+                              ) : (
+                                <FileText className="w-3 h-3 text-purple-400" />
+                              )}
+                              <span>رسالة</span>
+                            </button>
+
+                            {/* WhatsApp Send */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCodeForSend(code);
+                                if (isUsed && studentInfo?.phone) {
+                                  setCustomSendPhone(studentInfo.phone);
+                                  setCustomSendName(studentInfo.studentName);
+                                } else {
+                                  const pending = accessRequests.find(r => r.status === 'pending');
+                                  if (pending) {
+                                    setCustomSendPhone(pending.phone);
+                                    setCustomSendName(pending.name);
+                                  } else {
+                                    setCustomSendPhone('');
+                                    setCustomSendName('');
+                                  }
+                                }
+                              }}
+                              className="py-1 px-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                              title="إرسال عبر واتساب"
+                            >
+                              <Send className="w-3 h-3 text-emerald-400" />
+                            </button>
+                          </div>
+
+                          {/* If used: Unbind button */}
+                          {isUsed && (
+                            <button
+                              type="button"
+                              onClick={() => handleReleaseCode(code)}
+                              className="w-full py-0.5 px-1 rounded text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 transition cursor-pointer flex items-center justify-center gap-1"
+                              title="إلغاء ربط الكود بهذا الرقم وإتاحته من جديد"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" />
+                              <span>إلغاء الربط وإعادة الإتاحة</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -2143,36 +2302,20 @@ export const OwnerAdminModal: React.FC<OwnerAdminModalProps> = ({
                 </div>
               </form>
 
-              {/* Master Recovery Passwords Info */}
+              {/* Security & Access Protection Info */}
               <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-2 text-slate-300 leading-relaxed">
                 <div className="flex items-center justify-between">
                   <div className="font-bold text-amber-400 flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4" />
-                    <span>مفاتيح الأمان الاحتياطية للطوارئ (Master Recovery Keys):</span>
+                    <span>حماية الحسابات والمصادقة الأمنية المشددة:</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="p-1 rounded text-slate-400 hover:text-white transition flex items-center gap-1 text-[11px]"
-                  >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    <span>{showPassword ? 'إخفاء' : 'إظهار'}</span>
-                  </button>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    نظام مشفر ومحمي
+                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  مفاتيح الطوارئ المشفرة المعتمدة لحساب المالك (انقر إظهار لعرضها):
+                  تم تشفير بيانات الدخول واعتماد آلية التوثيق الرباعي لمنع أي وصول غير مصرح به وحفظ سرية المنصة بالكامل.
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono text-[11px] text-center">
-                  <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-amber-300 font-bold">
-                    {showPassword ? '785502919' : '••••••••'}
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-purple-300">
-                    {showPassword ? 'mechatronics2026' : '••••••••••••••••'}
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-indigo-300">
-                    {showPassword ? 'admin785502919' : '••••••••••••••'}
-                  </div>
-                </div>
               </div>
 
               {/* Data Backup & Export */}

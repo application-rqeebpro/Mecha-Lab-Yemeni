@@ -91,6 +91,13 @@ export interface MemoryRequest {
   updated_at: string;
 }
 
+export interface MemoryCodeUsage {
+  code: string;
+  phone: string;
+  student_name?: string;
+  used_at: string;
+}
+
 // Persistent shared storage across requests in memory
 export const memoryStore = {
   users: [
@@ -124,6 +131,7 @@ export const memoryStore = {
     }
   ] as MemoryUser[],
   requests: [] as MemoryRequest[],
+  codeUsage: [] as MemoryCodeUsage[],
   settings: {
     owner_password: '785502919',
     auto_activate_subscribers: 'true'
@@ -254,6 +262,19 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
           INSERT INTO system_settings (key, value, updated_at)
           VALUES ('owner_password', '785502919', NOW())
           ON CONFLICT (key) DO NOTHING;
+        `);
+
+        // 4. Activation code usage table (Single-use per phone)
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS activation_code_usage (
+            id SERIAL PRIMARY KEY,
+            code VARCHAR(50) UNIQUE NOT NULL,
+            phone VARCHAR(50) NOT NULL,
+            student_name VARCHAR(255),
+            used_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_code_usage_code ON activation_code_usage(code);
+          CREATE INDEX IF NOT EXISTS idx_code_usage_phone ON activation_code_usage(phone);
         `);
 
         await client.query('COMMIT');

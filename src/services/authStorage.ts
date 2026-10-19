@@ -1,6 +1,6 @@
 import { StudentUser, Experiment, AcademicYear, AccessRequest } from '../types/mechatronics';
 import { normalizePhone } from '../utils/phoneUtils';
-import { isValidOfficialCode } from '../data/activationCodes';
+import { isValidOfficialCode, OFFICIAL_ACTIVATION_CODES } from '../data/activationCodes';
 
 const USERS_STORAGE_KEY = 'yemen_mechatronics_users_v1';
 const REQUESTS_STORAGE_KEY = 'yemen_mechatronics_requests_v1';
@@ -8,6 +8,7 @@ const CURRENT_USER_KEY = 'yemen_mechatronics_current_user_v1';
 const CUSTOM_LESSONS_KEY = 'yemen_mechatronics_custom_lessons_v1';
 const OWNER_PASSWORD_STORAGE_KEY = 'yemen_mechatronics_owner_pwd_v1';
 const DB_STATUS_CACHE_KEY = 'yemen_mechatronics_db_status_cache';
+const CODE_USAGE_STORAGE_KEY = 'yemen_mechatronics_code_usage_v1';
 
 // Default master recovery keys for the owner (primary: owner's direct phone number 785502919)
 export const DEFAULT_OWNER_PASSWORD = '785502919';
@@ -359,24 +360,26 @@ export const authStorage = {
   }> {
     const rawPhone = phone.trim();
     const cleanPhone = normalizePhone(rawPhone) || rawPhone;
-    const cleanCode = code.trim().toLowerCase();
+    const rawCode = code.trim();
+    const upperCode = rawCode.toUpperCase();
 
-    if (!cleanCode) {
-      return { success: false, message: 'يرجى إدخال كود الدخول للمعمل' };
+    if (!upperCode) {
+      return { success: false, message: 'يرجى إدخال كود التفعيل للدخول للمعمل' };
     }
 
-    // Call server endpoint
+    // Call server endpoint first
     const res = await safeFetchJson<any>('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'verify-code',
         phone: cleanPhone,
-        code: cleanCode
+        code: upperCode
       })
     });
 
     if (res.ok && res.data?.success && res.data?.user) {
+      this.recordLocalCodeUsage(upperCode, cleanPhone, res.data.user.name);
       this.setCurrentUser(res.data.user);
       this.activateUserByPhone(cleanPhone);
       return {
@@ -386,57 +389,167 @@ export const authStorage = {
       };
     }
 
-    // Local fallback check
-    const rawCode = code.trim();
-    const upperCode = rawCode.toUpperCase();
-    const lowerCode = rawCode.toLowerCase();
-    const ownerPass = this.getOwnerPassword().toLowerCase();
-    const validCodes = ['785502919', '7855', '785502', ownerPass, 'mechatronics2026', 'aseel2026', '123456', 'engaseel'];
-    if (validCodes.includes(lowerCode) || isValidOfficialCode(upperCode)) {
-      const users = this.getUsers();
-      let user = users.find(u => u.phone === cleanPhone || normalizePhone(u.phone) === cleanPhone);
-      if (!user) {
-        user = {
-          id: `usr_${Date.now()}`,
-          name: 'مشترك ميكاترونكس',
-          phone: cleanPhone,
-          university: 'جامعة صنعاء',
-          academicYear: 1,
-          isAcademySubscriber: true,
-          isActivated: true,
-          accessCode: upperCode,
-          registeredAt: new Date().toISOString().split('T')[0],
-          role: 'student'
-        };
-        users.push(user);
-      } else {
-        user.isActivated = true;
-        user.isAcademySubscriber = true;
-        user.accessCode = upperCode;
-      }
-      this.saveUsers(users);
-
-      // Also update request access code if exists
-      const requests = this.getAccessRequests();
-      const reqIdx = requests.findIndex((r: AccessRequest) => r.phone === cleanPhone || normalizePhone(r.phone) === cleanPhone);
-      if (reqIdx !== -1) {
-        requests[reqIdx].status = 'approved';
-        requests[reqIdx].accessCode = upperCode;
-        this.saveAccessRequests(requests);
-      }
-      this.setCurrentUser(user);
-
+    if (res.ok && !res.data?.success) {
       return {
-        success: true,
-        user,
-        message: 'تم التحقق من الكود بنجاح! تم تفعيل دخولك إلى المختبر الافتراضي.'
+        success: false,
+        message: res.data?.message || 'كود الدخول غير صحيح! يرجى إدخال الكود المعتمد الممنوح لك من إدارة المنصة.'
       };
     }
 
+    // Local fallback check
+    if (!isValidOfficialCode(upperCode)) {
+      return {
+        success: false,
+        message: 'كود الدخول غير صحيح! يرجى إدخال الكود المعتمد الممنوح لك من إدارة المنصة.'
+      };
+    }
+
+    // Single-use 1-to-1 check locally
+    const usages = this.getLocalCodeUsages();
+    const existingCodeUsage = usages.find(u => u.code.toUpperCase() === upperCode);
+    if (existingCodeUsage && existingCodeUsage.phone !== cleanPhone) {
+      return {
+        success: false,
+        message: 'هذا الكود مستخدم بالفعل لرقم هاتف آخر! كل كود مخصص لمشترك واحد فقط.'
+      };
+    }
+
+    const existingPhoneUsage = usages.find(u => u.phone === cleanPhone);
+    if (existingPhoneUsage && existingPhoneUsage.code.toUpperCase() !== upperCode) {
+      return {
+        success: false,
+        message: 'هذا الرقم مفعل مسبقاً بكود آخر. لا يمكن استخدام أكثر من كود لنفس الرقم.'
+      };
+    }
+
+    const users = this.getUsers();
+    let user = users.find(u => u.phone === cleanPhone || normalizePhone(u.phone) === cleanPhone);
+    if (!user) {
+      user = {
+        id: `usr_${Date.now()}`,
+        name: 'مشترك ميكاترونكس',
+        phone: cleanPhone,
+        university: 'جامعة صنعاء',
+        academicYear: 1,
+        isAcademySubscriber: true,
+        isActivated: true,
+        accessCode: upperCode,
+        registeredAt: new Date().toISOString().split('T')[0],
+        role: 'student'
+      };
+      users.push(user);
+    } else {
+      user.isActivated = true;
+      user.isAcademySubscriber = true;
+      user.accessCode = upperCode;
+    }
+    this.saveUsers(users);
+
+    // Save local code usage binding
+    this.recordLocalCodeUsage(upperCode, cleanPhone, user.name);
+
+    // Also update request access code if exists
+    const requests = this.getAccessRequests();
+    const reqIdx = requests.findIndex((r: AccessRequest) => r.phone === cleanPhone || normalizePhone(r.phone) === cleanPhone);
+    if (reqIdx !== -1) {
+      requests[reqIdx].status = 'approved';
+      requests[reqIdx].accessCode = upperCode;
+      this.saveAccessRequests(requests);
+    }
+    this.setCurrentUser(user);
+
     return {
-      success: false,
-      message: res.data?.message || 'كود الدخول غير صحيح! للحصول على الكود أرسل رسالة إلى الرقم 785502919'
+      success: true,
+      user,
+      message: 'تم التحقق من الكود بنجاح! تم تفعيل دخولك إلى المختبر الافتراضي.'
     };
+  },
+
+  // Code Usage Persistence Helpers
+  getLocalCodeUsages(): Array<{ code: string; phone: string; studentName?: string; usedAt: string }> {
+    try {
+      const data = localStorage.getItem(CODE_USAGE_STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveLocalCodeUsages(usages: Array<{ code: string; phone: string; studentName?: string; usedAt: string }>): void {
+    try {
+      localStorage.setItem(CODE_USAGE_STORAGE_KEY, JSON.stringify(usages));
+    } catch {}
+  },
+
+  recordLocalCodeUsage(code: string, phone: string, studentName?: string): void {
+    const usages = this.getLocalCodeUsages().filter(u => u.code.toUpperCase() !== code.toUpperCase());
+    usages.push({
+      code: code.toUpperCase(),
+      phone,
+      studentName: studentName || 'مشترك ميكاترونكس',
+      usedAt: new Date().toISOString()
+    });
+    this.saveLocalCodeUsages(usages);
+  },
+
+  releaseCodeLocally(code: string): void {
+    const usages = this.getLocalCodeUsages().filter(u => u.code.toUpperCase() !== code.toUpperCase());
+    this.saveLocalCodeUsages(usages);
+  },
+
+  assignCodeLocally(code: string, phone: string, studentName?: string): void {
+    const upperCode = code.trim().toUpperCase();
+    const cleanPhone = normalizePhone(phone) || phone.trim();
+    const usages = this.getLocalCodeUsages().filter(
+      u => u.code.toUpperCase() !== upperCode && u.phone !== cleanPhone
+    );
+    usages.push({
+      code: upperCode,
+      phone: cleanPhone,
+      studentName: studentName || 'مشترك ميكاترونكس',
+      usedAt: new Date().toISOString()
+    });
+    this.saveLocalCodeUsages(usages);
+  },
+
+  // Get all 200 activation codes with live usage status
+  getActivationCodesWithStatus(): Array<{
+    code: string;
+    isUsed: boolean;
+    phone: string;
+    studentName: string;
+    usedAt: string;
+  }> {
+    const usages = this.getLocalCodeUsages();
+    const usageMap = new Map<string, { phone: string; studentName?: string; usedAt: string }>();
+    usages.forEach(u => usageMap.set(u.code.toUpperCase(), u));
+
+    // Also inspect registered users who have an accessCode
+    const users = this.getUsers();
+    users.forEach(u => {
+      if (u.accessCode && isValidOfficialCode(u.accessCode)) {
+        const up = u.accessCode.toUpperCase();
+        if (!usageMap.has(up)) {
+          usageMap.set(up, {
+            phone: u.phone,
+            studentName: u.name,
+            usedAt: u.registeredAt || new Date().toISOString()
+          });
+        }
+      }
+    });
+
+    return OFFICIAL_ACTIVATION_CODES.map(code => {
+      const up = code.toUpperCase();
+      const usage = usageMap.get(up);
+      return {
+        code: up,
+        isUsed: Boolean(usage),
+        phone: usage?.phone || '',
+        studentName: usage?.studentName || '',
+        usedAt: usage?.usedAt || ''
+      };
+    });
   },
 
   // Full asynchronous registration guaranteed to NEVER fail
@@ -719,8 +832,9 @@ export const authStorage = {
     success: boolean;
     users: StudentUser[];
     requests: AccessRequest[];
+    activationCodes?: Array<{ code: string; isUsed: boolean; phone: string; studentName: string; usedAt: string }>;
     ownerPassword?: string;
-    stats?: { totalUsers: number; activatedUsers: number; pendingRequests: number };
+    stats?: { totalUsers: number; activatedUsers: number; pendingRequests: number; totalCodes?: number; usedCodes?: number; availableCodes?: number };
     dbConnected: boolean;
     error?: string;
   }> {
@@ -728,8 +842,9 @@ export const authStorage = {
       success: boolean;
       users?: StudentUser[];
       requests?: AccessRequest[];
+      activationCodes?: Array<{ code: string; isUsed: boolean; phone: string; studentName: string; usedAt: string }>;
       ownerPassword?: string;
-      stats?: { totalUsers: number; activatedUsers: number; pendingRequests: number };
+      stats?: { totalUsers: number; activatedUsers: number; pendingRequests: number; totalCodes?: number; usedCodes?: number; availableCodes?: number };
       dbConnected?: boolean;
     }>('/api/owner?action=data', {
       headers: {

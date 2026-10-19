@@ -94,7 +94,7 @@ export const EnterCodeModal: React.FC<EnterCodeModalProps> = ({
       } else {
         setFeedback({
           type: 'error',
-          message: res.message || 'كود الدخول غير صحيح! للحصول على الكود أرسل رسالة إلى الرقم 785502919'
+          message: res.message || 'كود التفعيل غير صحيح! يرجى إدخال الكود المعتمد الممنوح لك من إدارة المنصة.'
         });
       }
     } catch {
@@ -217,8 +217,8 @@ export const EnterCodeModal: React.FC<EnterCodeModalProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
                 <span>كود الدخول للمعمل <span className="text-rose-400">*</span></span>
-                <span className="text-[10px] text-slate-400 font-normal">
-                  الكود المعتمد
+                <span className="text-[10px] text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                  الكود مخصص لرقم واحد فقط
                 </span>
               </label>
               <div className="relative">
@@ -228,8 +228,8 @@ export const EnterCodeModal: React.FC<EnterCodeModalProps> = ({
                   required
                   autoFocus
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="أدخل كود الدخول للمعمل"
+                  onChange={(e) => setCode(e.target.value.toUpperCase().trim())}
+                  placeholder="أدخل كود الدخول المعتمد"
                   className="w-full bg-slate-950 border-2 border-purple-500/60 focus:border-emerald-400 rounded-xl pr-10 pl-4 py-3 text-base text-white text-center font-mono font-bold tracking-widest placeholder-slate-600 focus:outline-none transition shadow-inner uppercase"
                   dir="ltr"
                 />
